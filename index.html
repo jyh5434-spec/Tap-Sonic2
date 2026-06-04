@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vibe TapSonic - Retro Rhythm Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons for UI -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+KR:wght@300;400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #0b0c10;
+            color: #ffffff;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* 탭소닉 특유의 입체적이고 네온 빛이 나는 레일 스타일 */
+        .game-lane {
+            background: linear-gradient(to bottom, rgba(31, 41, 55, 0.1), rgba(17, 24, 39, 0.8));
+            position: relative;
+            border-left: 1px solid rgba(255, 255, 255, 0.05);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            transition: background 0.1s ease;
+        }
+
+        .game-lane::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.01), rgba(255,255,255,0.1));
+            pointer-events: none;
+        }
+
+        /* 활성화된 라인 이펙트 */
+        .lane-active {
+            background: linear-gradient(to bottom, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.35)) !important;
+            border-bottom: 5px solid #3b82f6;
+        }
+
+        /* 판정선 타겟 디자인 (바닥 터치 영역에서 정확히 120px 위에 고정) */
+        .judgment-line {
+            position: absolute;
+            bottom: 120px; 
+            left: 0;
+            width: 100%;
+            height: 8px;
+            background: linear-gradient(90deg, rgba(244,63,94,0) 0%, rgba(244,63,94,1) 50%, rgba(244,63,94,0) 100%);
+            box-shadow: 0 0 15px #f43f5e, 0 0 5px #f43f5e;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* 네온 서클 탭 패드 */
+        .tap-pad {
+            height: 100px;
+            transition: all 0.1s ease;
+            background: rgba(15, 23, 42, 0.9);
+            border-top: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* 콤보 폰트 애니메이션 */
+        @keyframes combo-pop {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .combo-animate {
+            animation: combo-pop 0.1s ease-out forwards;
+        }
+
+        /* 판정 텍스트 피드백 애니메이션 */
+        @keyframes judgment-pop {
+            0% { transform: translateY(10px) scale(0.8); opacity: 0; }
+            30% { transform: translateY(-5px) scale(1.15); opacity: 1; }
+            100% { transform: translateY(-12px) scale(1); opacity: 0; }
+        }
+
+        .judg-animate {
+            animation: judgment-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* 노광 효과 및 빔 연출 */
+        .hit-beam {
+            position: absolute;
+            bottom: 120px;
+            left: 0;
+            width: 100%;
+            height: 350px;
+            background: linear-gradient(to top, rgba(244, 63, 94, 0.4), rgba(244, 63, 94, 0));
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.04s linear;
+        }
+
+        .hit-beam.active {
+            opacity: 1;
+        }
+
+        /* 배경 우주 파티클 */
+        #bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* 스크롤바 커스텀 */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.02);
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(244, 63, 94, 0.3);
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(244, 63, 94, 0.6);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center h-screen w-screen overflow-hidden">
+
+    <!-- 별빛 배경 효과 -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- 게임 전체 컨테이너 -->
+    <div class="relative z-10 w-full max-w-md h-full flex flex-col justify-between bg-black/45 backdrop-blur-md shadow-2xl border-x border-white/10">
+        
+        <!-- ================= 메인 메뉴 화면 ================= -->
+        <div id="screen-main" class="flex flex-col h-full justify-between p-5 text-center overflow-y-auto custom-scroll">
+            <!-- 헤더 타이틀 -->
+            <div class="mt-4">
+                <div class="inline-block px-3 py-1 bg-rose-600 text-[10px] font-orbitron font-bold tracking-widest rounded-full mb-1 shadow-lg shadow-rose-600/30">K-POP POPULAR TRACKS</div>
+                <h1 class="text-4xl font-extrabold tracking-tighter font-orbitron text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-rose-500 to-yellow-400">
+                    TAP SONIC
+                </h1>
+                <p class="text-[11px] text-gray-400 tracking-wider font-orbitron">VIBE POP STAR EDITION</p>
+            </div>
+
+            <!-- 글로벌 속도(배속) 선택 패널 -->
+            <div class="my-2 bg-white/5 p-3 rounded-xl border border-white/10 text-left">
+                <span class="text-xs text-cyan-400 font-bold uppercase tracking-wider block mb-1.5"><i class="fa-solid fa-gauge-high mr-1"></i> SELECT NOTE SPEED (속도 설정)</span>
+                <div class="grid grid-cols-6 gap-1.5">
+                    <button onclick="setGlobalSpeed(0)" id="btn-speed-0" class="py-2 text-xs font-orbitron font-bold rounded-lg border border-gray-700 bg-gray-900/60 text-gray-400 transition-all hover:bg-white/10">1x</button>
+                    <button onclick="setGlobalSpeed(1)" id="btn-speed-1" class="py-2 text-xs font-orbitron font-bold rounded-lg border border-gray-700 bg-gray-900/60 text-gray-400 transition-all hover:bg-white/10">2x</button>
+                    <button onclick="setGlobalSpeed(2)" id="btn-speed-2" class="py-2 text-xs font-orbitron font-bold rounded-lg border border-gray-700 bg-gray-900/60 text-gray-400 transition-all hover:bg-white/10">3x</button>
+                    <button onclick="setGlobalSpeed(3)" id="btn-speed-3" class="py-2 text-xs font-orbitron font-bold rounded-lg border border-gray-700 bg-gray-900/60 text-gray-400 transition-all hover:bg-white/10">4x</button>
+                    <button onclick="setGlobalSpeed(4)" id="btn-speed-4" class="py-2 text-xs font-orbitron font-bold rounded-lg border border-gray-700 bg-gray-900/60 text-gray-400 transition-all hover:bg-white/10">5x</button>
+                    <button onclick="setGlobalSpeed(5)" id="btn-speed-5" class="py-2 text-xs font-orbitron font-bold rounded-lg border border-gray-700 bg-gray-900/60 text-gray-400 transition-all hover:bg-white/10">6x</button>
+                </div>
+                <div class="text-[10px] text-gray-400 mt-1.5 text-center" id="speed-desc">배속 설명이 이곳에 표기됩니다.</div>
+            </div>
+
+            <!-- 곡 선택 패널 -->
+            <div class="flex-grow my-1 flex flex-col min-h-[260px]">
+                <div class="flex justify-between items-center mb-1.5">
+                    <p class="text-xs text-rose-400 font-bold tracking-widest uppercase">Select Music</p>
+                    <span id="selected-song-count" class="text-gray-400 font-orbitron text-xs">0/0</span>
+                </div>
+                
+                <!-- 곡 실시간 검색창 -->
+                <div class="relative mb-2">
+                    <input type="text" id="search-input" oninput="filterSongs()" placeholder="곡명 또는 아티스트 검색..." class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 focus:bg-white/10 transition-all">
+                    <span class="absolute right-3 top-2.5 text-gray-500 text-xs"><i class="fa-solid fa-search"></i></span>
+                </div>
+
+                <!-- 곡 스크롤 컨테이너 -->
+                <div class="space-y-1.5 overflow-y-auto max-h-56 pr-1 custom-scroll" id="song-list-container">
+                    <!-- 곡 카드들이 스크립트에 의해 동적으로 생성됩니다 -->
+                </div>
+            </div>
+
+            <!-- 하단 조작 안내 & 스타트 -->
+            <div class="mt-1 space-y-2">
+                <div class="p-2 rounded-lg bg-white/5 border border-white/5 text-[10px] text-gray-400">
+                    <p class="font-bold text-white mb-0.5"><i class="fa-solid fa-keyboard mr-1"></i> PC 조작키 안내</p>
+                    <p>왼쪽 레인: <span class="text-cyan-400 font-bold">S</span> , <span class="text-cyan-400 font-bold">D</span> &nbsp;|&nbsp; 오른쪽 레인: <span class="text-rose-400 font-bold">K</span> , <span class="text-rose-400 font-bold">L</span></p>
+                </div>
+
+                <button onclick="startGame()" class="w-full py-3 bg-gradient-to-r from-cyan-600 to-rose-600 hover:from-cyan-500 hover:to-rose-500 text-white font-orbitron font-extrabold text-base rounded-xl shadow-lg shadow-rose-600/30 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200">
+                    GAME START
+                </button>
+            </div>
+        </div>
+
+
+        <!-- ================= 게임 진행 화면 ================= -->
+        <div id="screen-game" class="hidden relative flex-col h-full justify-between">
+            
+            <!-- 상단 헤더 HUD -->
+            <div class="absolute top-0 left-0 w-full p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent z-20">
+                <!-- 뒤로가기 -->
+                <button onclick="exitGame()" class="text-gray-400 hover:text-white px-3 py-1 rounded bg-white/10 text-xs">
+                    <i class="fa-solid fa-arrow-left mr-1"></i> 그만하기
+                </button>
+                <!-- 노래 정보 -->
+                <div class="text-center">
+                    <h2 id="hud-track-title" class="font-bold text-sm text-white tracking-wide">How Sweet</h2>
+                    <p id="hud-track-sub" class="text-[10px] text-gray-400">NewJeans</p>
+                </div>
+                <!-- 게이지바 -->
+                <div class="w-24 bg-gray-800 h-3 rounded-full overflow-hidden border border-white/10">
+                    <div id="hp-bar" class="bg-gradient-to-r from-red-500 to-emerald-400 h-full w-full transition-all duration-200"></div>
+                </div>
+            </div>
+
+            <!-- 스코어 & 콤보 HUD -->
+            <div class="absolute top-20 left-0 w-full flex flex-col items-center justify-center pointer-events-none z-20">
+                <div class="text-center">
+                    <span id="game-score" class="text-3xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500 tracking-wider">000000</span>
+                </div>
+                <div id="combo-box" class="hidden text-center mt-3">
+                    <span id="combo-count" class="block text-5xl font-orbitron font-black text-white italic drop-shadow-[0_4px_6px_rgba(0,0,0,0.8)]">0</span>
+                    <span class="text-[10px] font-orbitron font-bold text-cyan-400 tracking-[0.3em] uppercase drop-shadow">COMBO</span>
+                </div>
+            </div>
+
+            <!-- 판정 글자 피드백 (판정선에 완전히 정렬) -->
+            <div class="absolute bottom-40 left-0 w-full flex justify-center pointer-events-none z-30">
+                <div id="judgment-feedback" class="judg-animate opacity-0 text-3xl font-orbitron font-extrabold italic uppercase">
+                    PERFECT
+                </div>
+            </div>
+
+            <!-- 레일 에어리어 -->
+            <div class="flex-grow flex h-full relative z-10 pt-16">
+                <div class="judgment-line"></div>
+
+                <!-- 0번 레일 (S 키) -->
+                <div id="lane-0" class="game-lane flex-1 flex flex-col justify-end">
+                    <div id="hit-beam-0" class="hit-beam"></div>
+                    <div class="relative w-full h-[120px]"></div>
+                </div>
+                <!-- 1번 레일 (D 키) -->
+                <div id="lane-1" class="game-lane flex-1 flex flex-col justify-end">
+                    <div id="hit-beam-1" class="hit-beam"></div>
+                    <div class="relative w-full h-[120px]"></div>
+                </div>
+                <!-- 2번 레일 (K 키) -->
+                <div id="lane-2" class="game-lane flex-1 flex flex-col justify-end">
+                    <div id="hit-beam-2" class="hit-beam"></div>
+                    <div class="relative w-full h-[120px]"></div>
+                </div>
+                <!-- 3번 레일 (L 키) -->
+                <div id="lane-3" class="game-lane flex-1 flex flex-col justify-end">
+                    <div id="hit-beam-3" class="hit-beam"></div>
+                    <div class="relative w-full h-[120px]"></div>
+                </div>
+
+                <!-- 노트 렌더링 컨테이너 -->
+                <div id="notes-container" class="absolute inset-0 pointer-events-none z-10"></div>
+            </div>
+
+            <!-- 하단 터치 패드 컨트롤러 -->
+            <div class="grid grid-cols-4 tap-pad relative z-20">
+                <button id="pad-0" class="h-full flex flex-col justify-center items-center active:scale-95 transition-all text-xs border-r border-white/5" onmousedown="handlePadPress(0)" onmouseup="handlePadRelease(0)" ontouchstart="handlePadPress(0); event.preventDefault();" ontouchend="handlePadRelease(0); event.preventDefault();">
+                    <div class="w-12 h-12 rounded-full border-2 border-blue-400 flex items-center justify-center font-bold text-blue-400 font-orbitron shadow-[0_0_10px_rgba(59,130,246,0.3)]">S</div>
+                </button>
+                <button id="pad-1" class="h-full flex flex-col justify-center items-center active:scale-95 transition-all text-xs border-r border-white/5" onmousedown="handlePadPress(1)" onmouseup="handlePadRelease(1)" ontouchstart="handlePadPress(1); event.preventDefault();" ontouchend="handlePadRelease(1); event.preventDefault();">
+                    <div class="w-12 h-12 rounded-full border-2 border-cyan-400 flex items-center justify-center font-bold text-cyan-400 font-orbitron shadow-[0_0_10px_rgba(34,211,238,0.3)]">D</div>
+                </button>
+                <button id="pad-2" class="h-full flex flex-col justify-center items-center active:scale-95 transition-all text-xs border-r border-white/5" onmousedown="handlePadPress(2)" onmouseup="handlePadRelease(2)" ontouchstart="handlePadPress(2); event.preventDefault();" ontouchend="handlePadRelease(2); event.preventDefault();">
+                    <div class="w-12 h-12 rounded-full border-2 border-pink-400 flex items-center justify-center font-bold text-pink-400 font-orbitron shadow-[0_0_10px_rgba(244,63,94,0.3)]">K</div>
+                </button>
+                <button id="pad-3" class="h-full flex flex-col justify-center items-center active:scale-95 transition-all text-xs" onmousedown="handlePadPress(3)" onmouseup="handlePadRelease(3)" ontouchstart="handlePadPress(3); event.preventDefault();" ontouchend="handlePadRelease(3); event.preventDefault();">
+                    <div class="w-12 h-12 rounded-full border-2 border-amber-400 flex items-center justify-center font-bold text-amber-400 font-orbitron shadow-[0_0_10px_rgba(245,158,11,0.3)]">L</div>
+                </button>
+            </div>
+        </div>
+
+
+        <!-- ================= 결과 발표 화면 ================= -->
+        <div id="screen-result" class="hidden flex-col h-full justify-between p-6 text-center">
+            <div class="mt-8">
+                <span class="inline-block px-3 py-1 bg-emerald-600 text-[10px] font-orbitron font-bold tracking-widest rounded-full mb-3 shadow">STAGE CLEAR</span>
+                <h2 id="result-track-title" class="text-3xl font-extrabold font-orbitron text-white">How Sweet</h2>
+                <p class="text-xs text-gray-400 mt-1">Vibe Sonic Play Report</p>
+            </div>
+
+            <!-- 스코어 정보 카드 -->
+            <div class="bg-gray-900/60 border border-white/10 rounded-2xl p-6 my-auto space-y-4">
+                <div class="text-center border-b border-white/5 pb-4">
+                    <span class="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Final Score</span>
+                    <h3 id="result-score" class="text-5xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500">000,000</h3>
+                </div>
+
+                <!-- 랭크 -->
+                <div class="flex justify-between items-center py-1">
+                    <span class="text-xs text-gray-400 font-bold uppercase tracking-wider">RANK</span>
+                    <span id="result-rank" class="text-3xl font-orbitron font-black text-rose-500 drop-shadow">S</span>
+                </div>
+
+                <!-- 판정 디테일 -->
+                <div class="grid grid-cols-2 gap-3 text-xs pt-2">
+                    <div class="flex justify-between p-2 rounded bg-black/30 border border-emerald-500/10">
+                        <span class="text-emerald-400 font-bold">PERFECT</span>
+                        <span id="cnt-perfect" class="text-white font-bold font-orbitron">0</span>
+                    </div>
+                    <div class="flex justify-between p-2 rounded bg-black/30 border border-blue-500/10">
+                        <span class="text-blue-400 font-bold">GREAT</span>
+                        <span id="cnt-great" class="text-white font-bold font-orbitron">0</span>
+                    </div>
+                    <div class="flex justify-between p-2 rounded bg-black/30 border border-yellow-500/10">
+                        <span class="text-yellow-400 font-bold">GOOD</span>
+                        <span id="cnt-good" class="text-white font-bold font-orbitron">0</span>
+                    </div>
+                    <div class="flex justify-between p-2 rounded bg-black/30 border border-red-500/10">
+                        <span class="text-red-500 font-bold">MISS</span>
+                        <span id="cnt-miss" class="text-white font-bold font-orbitron">0</span>
+                    </div>
+                </div>
+
+                <!-- 최대 콤보 -->
+                <div class="flex justify-between items-center border-t border-white/5 pt-4">
+                    <span class="text-xs text-gray-400 font-bold uppercase tracking-wider">Max Combo</span>
+                    <span id="result-max-combo" class="text-xl font-orbitron font-black text-white">0</span>
+                </div>
+            </div>
+
+            <!-- 다시하기 / 홈 버튼 -->
+            <div class="space-y-3">
+                <button onclick="restartCurrentTrack()" class="w-full py-4 bg-gradient-to-r from-blue-600 to-rose-600 text-white font-orbitron font-extrabold rounded-xl shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]">
+                    PLAY AGAIN
+                </button>
+                <button onclick="goToMenu()" class="w-full py-3 bg-gray-800 text-gray-300 font-orbitron font-bold rounded-xl hover:bg-gray-700 transition-colors">
+                    MAIN MENU
+                </button>
+            </div>
+        </div>
+
+        <!-- ================= 게임 오버 화면 (HP 0% 시 팝업) ================= -->
+        <div id="screen-gameover" class="hidden flex-col h-full justify-between p-6 text-center bg-black/95 z-50">
+            <div class="mt-16 space-y-4">
+                <span class="inline-block px-4 py-1 bg-red-600 text-xs font-orbitron font-bold tracking-widest rounded-full shadow-lg shadow-red-600/50 animate-pulse">FAILED</span>
+                <h2 class="text-5xl font-black font-orbitron tracking-tight text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.7)]">GAME OVER</h2>
+                <p id="gameover-track-info" class="text-sm text-gray-400 font-orbitron mt-2">How Sweet - NewJeans</p>
+            </div>
+
+            <!-- 해골 이펙트 아이콘 -->
+            <div class="my-auto flex justify-center items-center">
+                <div class="w-24 h-24 rounded-full border-4 border-red-500/30 flex items-center justify-center text-red-500 text-4xl animate-bounce">
+                    <i class="fa-solid fa-skull"></i>
+                </div>
+            </div>
+
+            <!-- 다시하기 / 홈 버튼 -->
+            <div class="space-y-3 mb-8">
+                <button onclick="restartCurrentTrackFromGameOver()" class="w-full py-4 bg-gradient-to-r from-red-600 to-amber-600 text-white font-orbitron font-extrabold rounded-xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all">
+                    TRY AGAIN (재도전)
+                </button>
+                <button onclick="goToMenuFromGameOver()" class="w-full py-3 bg-gray-800 text-gray-300 font-orbitron font-bold rounded-xl hover:bg-gray-700 transition-colors">
+                    MAIN MENU (메인으로)
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ================= 게임 핵심 스크립트 ================= -->
+    <script>
+        // --- 글로벌 속도 옵션 정의 ---
+        const SPEED_OPTIONS = [
+            { label: "1x", duration: 2.4, desc: "느긋한 속도 (Easy)" },
+            { label: "2x", duration: 1.8, desc: "보통 속도 (Normal)" },
+            { label: "3x", duration: 1.3, desc: "빠른 스피드 (Hard)" },
+            { label: "4x", duration: 0.9, desc: "초고속 스피드 (Expert)" },
+            { label: "5x", duration: 0.65, desc: "익스트림 속도 (Extreme)" },
+            { label: "6x", duration: 0.45, desc: "★ 한계 돌파 초광속 (Crazy) ★" }
+        ];
+        let globalSpeedIdx = 2; // 기본값 3x 속도
+        let searchQuery = ""; // 검색어 필터링 전역 변수
+
+        // 음높이 주파수 데이터 (C4=261.63, D4=293.66, E4=329.63, F4=349.23, G4=392.00, A4=440.00, B4=493.88, C5=523.25 등)
+        const NOTES = {
+            C4: 261.63, Cs4: 277.18, D4: 293.66, Ds4: 311.13, E4: 329.63, F4: 349.23, Fs4: 369.99, G4: 392.00, Gs4: 415.30, A4: 440.00, As4: 466.16, B4: 493.88,
+            C5: 523.25, Cs5: 554.37, D5: 587.33, Ds5: 622.25, E5: 659.25, F5: 698.46, Fs5: 739.99, G5: 783.99, Gs5: 830.61, A5: 880.00, As5: 932.33, B5: 987.77,
+            C6: 1046.50, D6: 1174.66, E6: 1318.51, G6: 1567.98
+        };
+
+        // --- 최신 K-POP 인기곡 30선 및 고유 리믹스 멜로디 시퀀스 ---
+        const TRACKS = [
+            // --- 투어스(TWS) 신나는 최신 명곡 6종 세트 ---
+            { 
+                title: "첫 만남은 계획대로 되지 않아", artist: "TWS (투어스)", genre: "Synth-pop", bpm: 128, noteDensity: 0.22, baseFreq: 130, noteColors: ["#60a5fa", "#34d399", "#22d3ee", "#fbbf24"],
+                melody: [
+                    "E5", "G5", "A5", "G5", "E5", "D5", "C5", "D5", 
+                    "E5", "E5", "D5", "D5", "C5", "C5", "A4", "C5",
+                    "E5", "G5", "A5", "C6", "A5", "G5", "E5", "D5",
+                    "C5", "E5", "G5", "E5", "D5", "D5", "C5", "C5"
+                ]
+            },
+            { 
+                title: "내가 S면 너는 나의 N이 되어줘", artist: "TWS (투어스)", genre: "Refreshing Pop", bpm: 135, noteDensity: 0.26, baseFreq: 125, noteColors: ["#34d399", "#22d3ee", "#fbbf24", "#60a5fa"],
+                melody: [
+                    "G5", "G5", "E5", "F5", "G5", "A5", "G5", "E5",
+                    "C5", "C5", "D5", "E5", "F5", "E5", "D5", "C5",
+                    "A5", "A5", "F5", "G5", "A5", "B5", "A5", "F5",
+                    "D5", "D5", "E5", "F5", "G5", "F5", "E5", "D5"
+                ]
+            },
+            { 
+                title: "Double Take", artist: "TWS (투어스)", genre: "Boom Bap / Hip-hop", bpm: 95, noteDensity: 0.32, baseFreq: 80, noteColors: ["#c084fc", "#a855f7", "#22d3ee", "#f43f5e"],
+                melody: [
+                    "C4", "Ds4", "F4", "Fs4", "F4", "Ds4", "C4", "C4",
+                    "As3", "C4", "Ds4", "C4", "Fs4", "Fs4", "F4", "F4",
+                    "C4", "Ds4", "F4", "Fs4", "F4", "Ds4", "C4", "C4",
+                    "As3", "C4", "Ds4", "C4", "G4", "Fs4", "F4", "Ds4"
+                ]
+            },
+            { 
+                title: "내가 태양이라면", artist: "TWS (투어스)", genre: "Emotional Pop Rock", bpm: 120, noteDensity: 0.20, baseFreq: 110, noteColors: ["#fbbf24", "#f43f5e", "#60a5fa", "#34d399"],
+                melody: [
+                    "C5", "E5", "G5", "C6", "B5", "A5", "G5", "F5",
+                    "E5", "G5", "C5", "D5", "E5", "D5", "C5", "D5",
+                    "C5", "E5", "G5", "C6", "B5", "A5", "G5", "A5",
+                    "B5", "G5", "A5", "F5", "G5", "E5", "D5", "C5"
+                ]
+            },
+            { 
+                title: "Unplugged Boy", artist: "TWS (투어스)", genre: "Retro Pop", bpm: 118, noteDensity: 0.18, baseFreq: 115, noteColors: ["#22d3ee", "#60a5fa", "#34d399", "#fbbf24"],
+                melody: [
+                    "A4", "C5", "E5", "A5", "G5", "E5", "D5", "C5",
+                    "D5", "E5", "D5", "C5", "A4", "C5", "D5", "E5",
+                    "A4", "C5", "E5", "A5", "G5", "E5", "D5", "E5",
+                    "G5", "E5", "D5", "C5", "D5", "C5", "A4", "A4"
+                ]
+            },
+            { 
+                title: "Hey! Hey!", artist: "TWS (투어스)", genre: "Fast Synth-pop", bpm: 142, noteDensity: 0.35, baseFreq: 135, noteColors: ["#60a5fa", "#22d3ee", "#fbbf24", "#f43f5e"],
+                melody: [
+                    "G5", "B5", "D6", "B5", "A5", "G5", "E5", "G5",
+                    "A5", "A5", "G5", "A5", "B5", "B5", "A5", "G5",
+                    "G5", "B5", "D6", "B5", "A5", "G5", "E5", "G5",
+                    "A5", "G5", "A5", "B5", "D6", "B5", "A5", "G5"
+                ]
+            },
+
+            // --- 기존 인기 대표 여돌 및 아티스트 트랙 ---
+            { 
+                title: "How Sweet", artist: "NewJeans (뉴진스)", genre: "Hip-hop / Pop", bpm: 133, noteDensity: 0.18, baseFreq: 130, noteColors: ["#60a5fa", "#22d3ee", "#f43f5e", "#fbbf24"],
+                melody: [
+                    "A4", "C5", "D5", "E5", "G5", "E5", "D5", "C5",
+                    "A4", "A4", "C5", "C5", "D5", "C5", "A4", "G4",
+                    "A4", "C5", "D5", "E5", "G5", "E5", "D5", "E5",
+                    "G5", "E5", "D5", "C5", "D5", "C5", "A4", "A4"
+                ]
+            },
+            { 
+                title: "Bubble Gum", artist: "NewJeans (뉴진스)", genre: "City Pop / Electro", bpm: 120, noteDensity: 0.16, baseFreq: 115, noteColors: ["#22d3ee", "#60a5fa", "#34d399", "#f43f5e"],
+                melody: [
+                    "C5", "F5", "A5", "G5", "F5", "E5", "D5", "C5",
+                    "D5", "G5", "B5", "A5", "G5", "F5", "E5", "D5",
+                    "E5", "A5", "C6", "B5", "A5", "G5", "F5", "E5",
+                    "F5", "E5", "D5", "C5", "D5", "C5", "As4", "C5"
+                ]
+            },
+            { 
+                title: "Supernova", artist: "aespa (에스파)", genre: "Hyperpop / Cyber", bpm: 120, noteDensity: 0.28, baseFreq: 95, noteColors: ["#c084fc", "#22d3ee", "#f43f5e", "#fbbf24"],
+                melody: [
+                    "E4", "E5", "D5", "B4", "A4", "B4", "G4", "E4",
+                    "E4", "G4", "A4", "As4", "A4", "G4", "E4", "D4",
+                    "E4", "E5", "D5", "B4", "A4", "B4", "G4", "E4",
+                    "E4", "B4", "A4", "G4", "A4", "G4", "E4", "E4"
+                ]
+            },
+            { 
+                title: "Armageddon", artist: "aespa (에스파)", genre: "Dark Synth / Hip-hop", bpm: 125, noteDensity: 0.30, baseFreq: 85, noteColors: ["#c084fc", "#a855f7", "#fbbf24", "#f43f5e"],
+                melody: [
+                    "C4", "C4", "Ds4", "F4", "Fs4", "Fs4", "F4", "Ds4",
+                    "C4", "C4", "Ds4", "C4", "As3", "As3", "C4", "C4",
+                    "C4", "C4", "Ds4", "F4", "Fs4", "Fs4", "F4", "Ds4",
+                    "C4", "C4", "G4", "Fs4", "F4", "Ds4", "C4", "C4"
+                ]
+            },
+            { 
+                title: "Whiplash", artist: "aespa (에스파)", genre: "Techno / Dance", bpm: 125, noteDensity: 0.32, baseFreq: 80, noteColors: ["#c084fc", "#a855f7", "#34d399", "#22d3ee"],
+                melody: [
+                    "A4", "A4", "C5", "A4", "D5", "A4", "Ds5", "D5",
+                    "C5", "A4", "G4", "A4", "C5", "C5", "A4", "A4",
+                    "A4", "A4", "C5", "A4", "D5", "A4", "Ds5", "D5",
+                    "C5", "A4", "E5", "D5", "C5", "G4", "A4", "A4"
+                ]
+            },
+            { 
+                title: "고민중독 (T.B.H)", artist: "QWER (큐더블유이알)", genre: "J-Rock / Punk", bpm: 165, noteDensity: 0.42, baseFreq: 220, noteColors: ["#34d399", "#22d3ee", "#f43f5e", "#fbbf24"],
+                melody: [
+                    "B4", "Cs5", "D5", "E5", "Fs5", "G5", "A5", "Fs5",
+                    "D5", "E5", "Fs5", "Fs5", "E5", "E5", "D5", "Cs5",
+                    "B4", "Cs5", "D5", "E5", "Fs5", "G5", "A5", "Fs5",
+                    "D5", "A5", "G5", "Fs5", "E5", "E5", "D5", "D5"
+                ]
+            },
+            { 
+                title: "내 이름 맑음", artist: "QWER (큐더블유이알)", genre: "Emotional Rock", bpm: 152, noteDensity: 0.35, baseFreq: 196, noteColors: ["#34d399", "#fbbf24", "#60a5fa", "#22d3ee"],
+                melody: [
+                    "G4", "B4", "D5", "G5", "Fs5", "E5", "D5", "C5",
+                    "B4", "D5", "G4", "A4", "B4", "A4", "G4", "A4",
+                    "G4", "B4", "D5", "G5", "Fs5", "E5", "D5", "E5",
+                    "Fs5", "D5", "E5", "C5", "D5", "B4", "A4", "G4"
+                ]
+            },
+            { 
+                title: "Accendio", artist: "IVE (아이브)", genre: "Dark Synth-pop", bpm: 135, noteDensity: 0.26, baseFreq: 110, noteColors: ["#f43f5e", "#c084fc", "#22d3ee", "#fbbf24"],
+                melody: [
+                    "A4", "D5", "F5", "A5", "Gs5", "F5", "E5", "D5",
+                    "C5", "E5", "A4", "B4", "C5", "B4", "A4", "B4",
+                    "A4", "D5", "F5", "A5", "Gs5", "F5", "E5", "F5",
+                    "G5", "E5", "F5", "D5", "E5", "C5", "A4", "A4"
+                ]
+            },
+            { 
+                title: "HEYA (해야)", artist: "IVE (아이브)", genre: "Hip-hop / Pop", bpm: 122, noteDensity: 0.24, baseFreq: 120, noteColors: ["#fbbf24", "#f43f5e", "#22d3ee", "#60a5fa"],
+                melody: [
+                    "D5", "F5", "G5", "A5", "C6", "A5", "G5", "F5",
+                    "D5", "D5", "F5", "F5", "G5", "F5", "D5", "C5",
+                    "D5", "F5", "G5", "A5", "C6", "A5", "G5", "A5",
+                    "C6", "A5", "G5", "F5", "G5", "F5", "D5", "D5"
+                ]
+            },
+            { 
+                title: "Magnetic", artist: "ILLIT (아일릿)", genre: "Pluck Pop", bpm: 132, noteDensity: 0.20, baseFreq: 140, noteColors: ["#60a5fa", "#f43f5e", "#22d3ee", "#c084fc"],
+                melody: [
+                    "E5", "G5", "B5", "C6", "B5", "G5", "E5", "D5",
+                    "E5", "E5", "G5", "G5", "B5", "G5", "E5", "D5",
+                    "E5", "G5", "B5", "C6", "B5", "G5", "E5", "G5",
+                    "A5", "G5", "A5", "B5", "G5", "E5", "D5", "E5"
+                ]
+            },
+            { 
+                title: "EASY", artist: "LE SSERAFIM (르세라핌)", genre: "Trap Beat / R&B", bpm: 140, noteDensity: 0.22, baseFreq: 100, noteColors: ["#34d399", "#f43f5e", "#fbbf24", "#c084fc"],
+                melody: [
+                    "A4", "A4", "C5", "D5", "E5", "E5", "D5", "C5",
+                    "A4", "G4", "A4", "A4", "C5", "A4", "G4", "E4",
+                    "A4", "A4", "C5", "D5", "E5", "E5", "D5", "E5",
+                    "G5", "E5", "D5", "C5", "D5", "C5", "A4", "A4"
+                ]
+            },
+            { 
+                title: "Perfect Night", artist: "LE SSERAFIM (르세라핌)", genre: "2-Step Garage", bpm: 122, noteDensity: 0.18, baseFreq: 110, noteColors: ["#22d3ee", "#60a5fa", "#fbbf24", "#34d399"],
+                melody: [
+                    "C5", "E5", "G5", "A5", "G5", "E5", "C5", "D5",
+                    "E5", "E5", "D5", "D5", "C5", "C5", "A4", "C5",
+                    "C5", "E5", "G5", "A5", "G5", "E5", "C5", "E5",
+                    "G5", "E5", "D5", "C5", "D5", "C5", "A4", "C5"
+                ]
+            },
+            { 
+                title: "뚜두뚜두 (DDU-DU DDU-DU)", artist: "BLACKPINK (블랙핑크)", genre: "Trap / EDM", bpm: 140, noteDensity: 0.32, baseFreq: 90, noteColors: ["#f43f5e", "#c084fc", "#fbbf24", "#22d3ee"],
+                melody: [
+                    "Cs4", "E4", "Fs4", "G4", "Fs4", "E4", "Cs4", "Cs4",
+                    "B3", "Cs4", "E4", "Cs4", "G4", "G4", "Fs4", "Fs4",
+                    "Cs4", "E4", "Fs4", "G4", "Fs4", "E4", "Cs4", "Cs4",
+                    "B3", "Cs4", "E4", "Cs4", "Gs4", "G4", "Fs4", "E4"
+                ]
+            },
+            { 
+                title: "APT.", artist: "ROSÉ & Bruno Mars", genre: "Punk Rock / Pop", bpm: 150, noteDensity: 0.40, baseFreq: 165, noteColors: ["#f43f5e", "#22d3ee", "#34d399", "#fbbf24"],
+                melody: [
+                    "C5", "C5", "A4", "C5", "C5", "A4", "C5", "C5",
+                    "D5", "D5", "C5", "D5", "D5", "C5", "D5", "D5",
+                    "E5", "E5", "D5", "E5", "E5", "D5", "E5", "E5",
+                    "G5", "G5", "E5", "G5", "G5", "E5", "D5", "C5"
+                ]
+            },
+            { 
+                title: "밤양갱", artist: "BIBI (비비)", genre: "Waltz Pop", bpm: 124, noteDensity: 0.20, baseFreq: 140, noteColors: ["#fbbf24", "#f43f5e", "#c084fc", "#34d399"],
+                melody: [
+                    "G5", "E5", "F5", "G5", "E5", "F5", "G5", "C6",
+                    "B5", "A5", "G5", "F5", "E5", "D5", "C5", "D5",
+                    "G5", "E5", "F5", "G5", "E5", "F5", "G5", "A5",
+                    "B5", "G5", "A5", "F5", "G5", "E5", "D5", "C5"
+                ]
+            },
+
+            // --- 기타 남돌 및 대표곡 트랙 리스트 ---
+            { 
+                title: "Deja Vu", artist: "TXT (투모로우바이투게더)", genre: "Rage / Rock", bpm: 144, noteDensity: 0.34, baseFreq: 160, noteColors: ["#a855f7", "#c084fc", "#f43f5e", "#22d3ee"],
+                melody: [
+                    "A4", "C5", "E5", "A5", "Gs5", "E5", "D5", "C5",
+                    "D5", "E5", "D5", "C5", "B4", "C5", "A4", "A4",
+                    "A4", "C5", "E5", "A5", "Gs5", "E5", "D5", "E5",
+                    "G5", "E5", "D5", "C5", "D5", "C5", "A4", "A4"
+                ]
+            },
+            { 
+                title: "Dynamite", artist: "BTS (방탄소년단)", genre: "Disco Pop", bpm: 114, noteDensity: 0.18, baseFreq: 115, noteColors: ["#fbbf24", "#c084fc", "#60a5fa", "#22d3ee"],
+                melody: [
+                    "E5", "Fs5", "Gs5", "B5", "A5", "Gs5", "Fs5", "E5",
+                    "Cs5", "Cs5", "E5", "E5", "Fs5", "E5", "Cs5", "B4",
+                    "E5", "Fs5", "Gs5", "B5", "A5", "Gs5", "Fs5", "Gs5",
+                    "B5", "Gs5", "Fs5", "E5", "Fs5", "E5", "Cs5", "Cs5"
+                ]
+            },
+            { 
+                title: "Butter", artist: "BTS (방탄소년단)", genre: "Dance Pop", bpm: 110, noteDensity: 0.17, baseFreq: 120, noteColors: ["#fbbf24", "#34d399", "#f43f5e", "#22d3ee"],
+                melody: [
+                    "G5", "G5", "E5", "G5", "G5", "E5", "G5", "A5",
+                    "B5", "B5", "A5", "B5", "B5", "A5", "G5", "E5",
+                    "G5", "G5", "E5", "G5", "G5", "E5", "G5", "B5",
+                    "D6", "B5", "A5", "G5", "A5", "G5", "E5", "E5"
+                ]
+            },
+            { 
+                title: "봄날 (Spring Day)", artist: "BTS (방탄소년단)", genre: "Alternative Hip-hop", bpm: 93, noteDensity: 0.14, baseFreq: 105, noteColors: ["#60a5fa", "#22d3ee", "#fbbf24", "#34d399"],
+                melody: [
+                    "D5", "E5", "G5", "A5", "B5", "A5", "G5", "E5",
+                    "G5", "G5", "E5", "E5", "D5", "D5", "C5", "D5",
+                    "D5", "E5", "G5", "A5", "B5", "A5", "G5", "A5",
+                    "B5", "G5", "A5", "E5", "G5", "E5", "D5", "D5"
+                ]
+            },
+            { 
+                title: "한 페이지가 될 수 있게", artist: "DAY6 (데이식스)", genre: "Fast Punk Rock", bpm: 170, noteDensity: 0.45, baseFreq: 180, noteColors: ["#60a5fa", "#34d399", "#fbbf24", "#f43f5e"],
+                melody: [
+                    "C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6",
+                    "C6", "B5", "A5", "G5", "F5", "E5", "D5", "C5",
+                    "E5", "F5", "G5", "A5", "B5", "C6", "D6", "E6",
+                    "E6", "D6", "C6", "B5", "A5", "G5", "F5", "E5"
+                ]
+            },
+            { 
+                title: "아주 NICE", artist: "SEVENTEEN (세븐틴)", genre: "Funk Pop", bpm: 145, noteDensity: 0.38, baseFreq: 150, noteColors: ["#60a5fa", "#22d3ee", "#fbbf24", "#f43f5e"],
+                melody: [
+                    "G5", "G5", "E5", "G5", "G5", "E5", "A5", "G5",
+                    "C5", "C5", "D5", "E5", "F5", "E5", "D5", "C5",
+                    "G5", "G5", "E5", "G5", "G5", "E5", "A5", "C6",
+                    "B5", "G5", "A5", "F5", "G5", "E5", "D5", "C5"
+                ]
+            },
+            { 
+                title: "손오공 (Super)", artist: "SEVENTEEN (세븐틴)", genre: "Dance-pop / Jersey", bpm: 136, noteDensity: 0.34, baseFreq: 110, noteColors: ["#c084fc", "#f43f5e", "#fbbf24", "#34d399"],
+                melody: [
+                    "D4", "D5", "C5", "A4", "G4", "A4", "F4", "D4",
+                    "D4", "F4", "G4", "Gs4", "G4", "F4", "D4", "C4",
+                    "D4", "D5", "C5", "A4", "G4", "A4", "F4", "D4",
+                    "D4", "A4", "G4", "F4", "G4", "F4", "D4", "D4"
+                ]
+            },
+            { 
+                title: "Get A Guitar", artist: "RIIZE (라이즈)", genre: "Funk / Guitar", bpm: 115, noteDensity: 0.18, baseFreq: 135, noteColors: ["#fbbf24", "#22d3ee", "#60a5fa", "#f43f5e"],
+                melody: [
+                    "C5", "E5", "G5", "A5", "As5", "A5", "G5", "E5",
+                    "C5", "C5", "D5", "D5", "E5", "D5", "C5", "A4",
+                    "C5", "E5", "G5", "A5", "As5", "A5", "G5", "A5",
+                    "C6", "A5", "G5", "E5", "D5", "C5", "A4", "C5"
+                ]
+            },
+            { 
+                title: "Love 119", artist: "RIIZE (라이즈)", genre: "Pop R&B", bpm: 125, noteDensity: 0.22, baseFreq: 110, noteColors: ["#22d3ee", "#60a5fa", "#c084fc", "#f43f5e"],
+                melody: [
+                    "F5", "F5", "E5", "F5", "F5", "E5", "F5", "A5",
+                    "G5", "G5", "F5", "G5", "G5", "F5", "E5", "C5",
+                    "F5", "F5", "E5", "F5", "F5", "E5", "F5", "C6",
+                    "A5", "F5", "G5", "E5", "F5", "E5", "D5", "D5"
+                ]
+            },
+            { 
+                title: "WAY 4 LUV", artist: "PLAVE (플레이브)", genre: "Virtual Pop Rock", bpm: 124, noteDensity: 0.25, baseFreq: 135, noteColors: ["#60a5fa", "#22d3ee", "#c084fc", "#fbbf24"],
+                melody: [
+                    "D5", "Fs5", "A5", "B5", "A5", "Fs5", "D5", "E5",
+                    "Fs5", "Fs5", "E5", "E5", "D5", "D5", "B4", "D5",
+                    "D5", "Fs5", "A5", "B5", "A5", "Fs5", "D5", "Fs5",
+                    "A5", "Fs5", "E5", "D5", "E5", "D5", "B4", "D5"
+                ]
+            },
+            { 
+                title: "영웅 (Kick It)", artist: "NCT 127 (엔시티 127)", genre: "Neo Hip-hop / Metal", bpm: 137, noteDensity: 0.38, baseFreq: 70, noteColors: ["#fbbf24", "#34d399", "#f43f5e", "#22d3ee"],
+                melody: [
+                    "E4", "E4", "G4", "A4", "As4", "As4", "A4", "G4",
+                    "E4", "E4", "G4", "E4", "D4", "D4", "E4", "E4",
+                    "E4", "E4", "G4", "A4", "As4", "As4", "A4", "G4",
+                    "E4", "E4", "B4", "As4", "A4", "G4", "E4", "E4"
+                ]
+            },
+            { 
+                title: "특 (S-Class)", artist: "Stray Kids (스트레이 키즈)", genre: "Hip-hop / Glitch", bpm: 125, noteDensity: 0.40, baseFreq: 75, noteColors: ["#c084fc", "#34d399", "#22d3ee", "#f43f5e"],
+                melody: [
+                    "C4", "C5", "As4", "G4", "F4", "G4", "Ds4", "C4",
+                    "C4", "Ds4", "F4", "Fs4", "F4", "Ds4", "C4", "As3",
+                    "C4", "C5", "As4", "G4", "F4", "G4", "Ds4", "C4",
+                    "C4", "G4", "F4", "Ds4", "F4", "Ds4", "C4", "C4"
+                ]
+            },
+            { 
+                title: "다시 만난 세계", artist: "Girls' Generation (소녀시대)", genre: "Dance Pop", bpm: 150, noteDensity: 0.38, baseFreq: 130, noteColors: ["#60a5fa", "#22d3ee", "#34d399", "#f43f5e"],
+                melody: [
+                    "F5", "G5", "A5", "As5", "C6", "D6", "C6", "A5",
+                    "F5", "F5", "G5", "A5", "As5", "A5", "G5", "F5",
+                    "F5", "G5", "A5", "As5", "C6", "D6", "C6", "D6",
+                    "E6", "C6", "D6", "As5", "C6", "A5", "G5", "F5"
+                ]
+            },
+            { 
+                title: "뱅뱅뱅 (BANG BANG BANG)", artist: "BIGBANG (빅뱅)", genre: "Trap / Dance", bpm: 135, noteDensity: 0.38, baseFreq: 85, noteColors: ["#fbbf24", "#f43f5e", "#22d3ee", "#34d399"],
+                melody: [
+                    "Fs4", "Fs4", "A4", "B4", "C5", "C5", "B4", "A4",
+                    "Fs4", "Fs4", "A4", "Fs4", "E4", "E4", "Fs4", "Fs4",
+                    "Fs4", "Fs4", "A4", "B4", "C5", "C5", "B4", "A4",
+                    "Fs4", "Fs4", "Cs5", "C5", "B4", "A4", "Fs4", "Fs4"
+                ]
+            }
+        ];
+
+        // --- 오디오 관련 (Web Audio API) ---
+        let audioCtx = null;
+        let mainTimer = null;
+        let isAudioInitialized = false;
+
+        // --- 상태 관리 ---
+        let currentTrackIdx = 0;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let hp = 100;
+        let noteSpeed = 1.3; // 노트가 떨어져 내리는 총 시간(초)
+        let totalNotesCount = 0;
+        
+        let lastBeatTime = 0;
+        let musicStartTime = 0;
+        let isPlaying = false;
+
+        // 판정 카운터
+        let perfectCount = 0;
+        let greatCount = 0;
+        let goodCount = 0;
+        let missCount = 0;
+
+        // 노트 배열
+        let activeNotes = [];
+        let scheduledNotes = [];
+
+        // 라인 키 매핑
+        const LANE_KEYS = {
+            "s": 0, "S": 0, "ㄴ": 0,
+            "d": 1, "D": 1, "ㅇ": 1,
+            "k": 2, "K": 2, "ㅏ": 2,
+            "l": 3, "L": 3, "ㅣ": 3
+        };
+
+        // UI 캐싱
+        const screens = {
+            main: document.getElementById('screen-main'),
+            game: document.getElementById('screen-game'),
+            result: document.getElementById('screen-result'),
+            gameover: document.getElementById('screen-gameover')
+        };
+
+        // --- 1. 배경 파티클 연출 ---
+        const bgCanvas = document.getElementById('bg-canvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        let stars = [];
+
+        function resizeBgCanvas() {
+            bgCanvas.width = window.innerWidth;
+            bgCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeBgCanvas);
+        resizeBgCanvas();
+
+        function createStars() {
+            stars = [];
+            for (let i = 0; i < 60; i++) {
+                stars.push({
+                    x: Math.random() * bgCanvas.width,
+                    y: Math.random() * bgCanvas.height,
+                    size: Math.random() * 2 + 1,
+                    speed: Math.random() * 2 + 0.5,
+                    color: `rgba(255, 255, 255, ${Math.random() * 0.6 + 0.4})`
+                });
+            }
+        }
+        createStars();
+
+        function animateBg() {
+            bgCtx.fillStyle = '#0b0c10';
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            stars.forEach(star => {
+                bgCtx.fillStyle = star.color;
+                bgCtx.beginPath();
+                bgCtx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                bgCtx.fill();
+
+                star.y += star.speed;
+                if (star.y > bgCanvas.height) {
+                    star.y = -5;
+                    star.x = Math.random() * bgCanvas.width;
+                }
+            });
+            requestAnimationFrame(animateBg);
+        }
+        animateBg();
+
+
+        // --- 2. 동적 UI 렌더링 (곡 리스트 생성 및 실시간 검색) ---
+        function renderSongSelection() {
+            const container = document.getElementById('song-list-container');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            let matchedCount = 0;
+
+            TRACKS.forEach((track, idx) => {
+                // 검색어 필터링
+                const isMatch = track.title.toLowerCase().includes(searchQuery) || 
+                                track.artist.toLowerCase().includes(searchQuery) ||
+                                track.genre.toLowerCase().includes(searchQuery);
+                
+                if (!isMatch) return;
+
+                matchedCount++;
+
+                const card = document.createElement('button');
+                card.id = `btn-track-${idx}`;
+                card.className = "track-card w-full p-3.5 rounded-xl border flex justify-between items-center transition-all duration-300 text-left";
+                
+                // 선택 곡 하이라이트
+                if (idx === currentTrackIdx) {
+                    card.className += " border-rose-500 bg-rose-950/20";
+                } else {
+                    card.className += " border-gray-800 bg-gray-900/40 hover:bg-rose-950/10 hover:border-rose-500/20";
+                }
+
+                card.onclick = () => selectTrack(idx);
+                card.innerHTML = `
+                    <div class="text-left flex-grow pr-2">
+                        <h3 class="font-bold text-white text-sm truncate w-48">${track.title}</h3>
+                        <p class="text-[11px] text-gray-400 truncate w-48">${track.artist} (${track.genre})</p>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        <span class="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full font-bold">BPM ${track.bpm}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            const countText = document.getElementById('selected-song-count');
+            if (countText) {
+                countText.innerText = `${matchedCount}/${TRACKS.length}`;
+            }
+        }
+
+        // 글로벌 검색 필터
+        function filterSongs() {
+            searchQuery = document.getElementById('search-input').value.toLowerCase();
+            renderSongSelection();
+        }
+
+        // 글로벌 속도 설정기
+        function setGlobalSpeed(idx) {
+            globalSpeedIdx = idx;
+            noteSpeed = SPEED_OPTIONS[idx].duration;
+            
+            // 배속 버튼 하이라이트 리셋
+            for (let i = 0; i < SPEED_OPTIONS.length; i++) {
+                const btn = document.getElementById(`btn-speed-${i}`);
+                if (btn) {
+                    if (i === idx) {
+                        btn.classList.add('border-cyan-500', 'bg-cyan-950/40', 'text-cyan-300');
+                        btn.classList.remove('border-gray-700', 'bg-gray-900/60', 'text-gray-400');
+                    } else {
+                        btn.classList.remove('border-cyan-500', 'bg-cyan-950/40', 'text-cyan-300');
+                        btn.classList.add('border-gray-700', 'bg-gray-900/60', 'text-gray-400');
+                    }
+                }
+            }
+
+            const desc = document.getElementById('speed-desc');
+            if (desc) {
+                desc.innerHTML = `현재 노트 속도: <span class="text-cyan-300 font-bold">${SPEED_OPTIONS[idx].label}</span> (${SPEED_OPTIONS[idx].desc})`;
+            }
+        }
+
+        // 곡 선택 처리
+        function selectTrack(index) {
+            currentTrackIdx = index;
+            renderSongSelection();
+        }
+
+        // DOM 로드가 완벽히 끝난 후 초기화 렌더링 진행
+        window.onload = function() {
+            renderSongSelection();
+            setGlobalSpeed(globalSpeedIdx);
+        };
+
+
+        // --- 3. 오디오 합성 사운드 제네레이터 ---
+        function initAudio() {
+            if (isAudioInitialized) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            isAudioInitialized = true;
+        }
+
+        function playBeatSound(freq, type = 'triangle', duration = 0.12, volume = 0.15) {
+            if (!audioCtx) return;
+            try {
+                let osc = audioCtx.createOscillator();
+                let gainNode = audioCtx.createGain();
+
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                
+                if (type === 'sawtooth') {
+                    osc.frequency.exponentialRampToValueAtTime(freq / 2, audioCtx.currentTime + duration);
+                }
+
+                gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.error("Audio Play Error:", e);
+            }
+        }
+
+        // 판정 시 피드백 이펙트음 (현재 재생중인 곡의 으뜸음 기반 고음 연주)
+        function playHitSound(type) {
+            if (!audioCtx) return;
+            const track = TRACKS[currentTrackIdx];
+            const scaleBase = track.baseFreq * 2; // 한 옥타브 위 스케일음
+
+            try {
+                if (type === 'perfect') {
+                    playBeatSound(scaleBase * 1.5, 'sine', 0.08, 0.15); // 완전 5도
+                    playBeatSound(scaleBase * 2.0, 'sine', 0.12, 0.1);  // 옥타브
+                } else if (type === 'great') {
+                    playBeatSound(scaleBase * 1.25, 'sine', 0.07, 0.12); // 장 3도
+                } else if (type === 'good') {
+                    playBeatSound(scaleBase, 'sine', 0.06, 0.10);       // 근음
+                } else if (type === 'miss') {
+                    playBeatSound(90, 'sawtooth', 0.16, 0.25);          // 무거운 에러음
+                }
+            } catch (e) { }
+        }
+
+
+        // --- 4. 시드 기반 패턴 빌더 (박자 맞춤 노트 자동 생성) ---
+        function generateNotePatterns(track) {
+            const beatInterval = 60 / track.bpm; 
+            const trackDuration = 45; // 45초 완주형 세션
+            const totalBeats = Math.floor(trackDuration / beatInterval);
+            
+            let notes = [];
+            let noteId = 0;
+
+            function randomSeeded(seed) {
+                let x = Math.sin(seed++) * 10000;
+                return x - Math.floor(x);
+            }
+
+            for (let b = 5; b < totalBeats; b++) {
+                const beatTime = b * beatInterval;
+                const seed = b * 13.5;
+
+                // 정박 배치 확률
+                if (randomSeeded(seed) < 0.6) {
+                    const lane = Math.floor(randomSeeded(seed + 1) * 4);
+                    notes.push({ id: noteId++, lane: lane, spawnTime: beatTime, processed: false });
+                }
+
+                // 엇박 노트 확률 (밀도 대비)
+                if (track.noteDensity > 0.22 && randomSeeded(seed + 2) < track.noteDensity) {
+                    const halfBeatTime = beatTime + (beatInterval / 2);
+                    const lane = Math.floor(randomSeeded(seed + 3) * 4);
+                    notes.push({ id: noteId++, lane: lane, spawnTime: halfBeatTime, processed: false });
+                }
+
+                // 락 장르 등 빠른 BPM의 경우 연속 연타
+                if (track.bpm >= 150 && randomSeeded(seed + 4) < 0.25) {
+                    const quarterBeatTime = beatTime + (beatInterval / 4);
+                    const lane = Math.floor(randomSeeded(seed + 5) * 4);
+                    notes.push({ id: noteId++, lane: lane, spawnTime: quarterBeatTime, processed: false });
+                }
+
+                // 동시타 배치
+                if (track.noteDensity > 0.30 && randomSeeded(seed + 6) < 0.3) {
+                    const lane1 = Math.floor(randomSeeded(seed + 7) * 4);
+                    let lane2 = Math.floor(randomSeeded(seed + 8) * 4);
+                    if (lane1 === lane2) lane2 = (lane1 + 1) % 4;
+                    
+                    notes.push({ id: noteId++, lane: lane1, spawnTime: beatTime, processed: false });
+                    notes.push({ id: noteId++, lane: lane2, spawnTime: beatTime, processed: false });
+                }
+            }
+            return notes;
+        }
+
+
+        // --- 5. 게임 라이프사이클 함수 ---
+        function startGame() {
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            // 기존 노트 DOM 완벽 삭제 (찌꺼기 누적 오류 방지)
+            const notesContainer = document.getElementById('notes-container');
+            if (notesContainer) {
+                notesContainer.innerHTML = '';
+            }
+
+            // 레인 시각 스타일 초기화
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`lane-${i}`).classList.remove('lane-active');
+                document.getElementById(`hit-beam-${i}`).classList.remove('active');
+            }
+
+            // 리플레이용 카운터 리셋
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            hp = 100;
+            perfectCount = 0;
+            greatCount = 0;
+            goodCount = 0;
+            missCount = 0;
+
+            document.getElementById('game-score').innerText = "000000";
+            document.getElementById('combo-box').classList.add('hidden');
+            document.getElementById('hp-bar').style.width = '100%';
+            
+            const track = TRACKS[currentTrackIdx];
+            document.getElementById('hud-track-title').innerText = track.title;
+            document.getElementById('hud-track-sub').innerText = track.artist;
+
+            // 글로벌 세팅 속도로 동적 적용
+            noteSpeed = SPEED_OPTIONS[globalSpeedIdx].duration;
+
+            // 패턴 생성
+            scheduledNotes = generateNotePatterns(track);
+            totalNotesCount = scheduledNotes.length;
+            activeNotes = [];
+
+            // UI 스위칭
+            screens.main.classList.add('hidden');
+            screens.game.classList.remove('hidden');
+            screens.result.classList.add('hidden');
+            screens.gameover.classList.add('hidden');
+
+            gameState = "playing";
+            isPlaying = true;
+            musicStartTime = performance.now();
+            lastBeatTime = 0;
+
+            if (mainTimer) {
+                cancelAnimationFrame(mainTimer);
+            }
+            mainTimer = requestAnimationFrame(gameLoop);
+        }
+
+        function exitGame() {
+            isPlaying = false;
+            if (mainTimer) {
+                cancelAnimationFrame(mainTimer);
+            }
+            const notesContainer = document.getElementById('notes-container');
+            if (notesContainer) {
+                notesContainer.innerHTML = '';
+            }
+            activeNotes = [];
+            scheduledNotes = [];
+            
+            screens.game.classList.add('hidden');
+            screens.gameover.classList.add('hidden');
+            screens.main.classList.remove('hidden');
+        }
+
+        function restartCurrentTrack() {
+            screens.result.classList.add('hidden');
+            startGame();
+        }
+
+        function goToMenu() {
+            screens.result.classList.add('hidden');
+            screens.main.classList.remove('hidden');
+            gameState = "menu";
+        }
+
+        // --- 게임오버 전용 액션 연동 ---
+        function restartCurrentTrackFromGameOver() {
+            screens.gameover.classList.add('hidden');
+            startGame();
+        }
+
+        function goToMenuFromGameOver() {
+            screens.gameover.classList.add('hidden');
+            screens.main.classList.remove('hidden');
+            gameState = "menu";
+        }
+
+
+        // --- 6. 고도화된 음악 메커니즘 (곡별 고유 멜로디 및 박자 구현) ---
+        function handleProceduralMusic(elapsedSec, beatInterval, track) {
+            // 비트를 세분화하여 연주 (정박 외에 8분음표/16분음표 멜로디 단계 계산)
+            const tickInterval = beatInterval / 2; // 8분음표 단위 틱
+            const nextTickNum = Math.floor(elapsedSec / tickInterval);
+            const currentTickTime = nextTickNum * tickInterval;
+            
+            if (currentTickTime > lastBeatTime) {
+                lastBeatTime = currentTickTime;
+
+                // 멜로디 배열 가져오기 (멜로디가 없으면 기본 코드 진행)
+                const melodyPattern = track.melody || ["C5"];
+                const step = nextTickNum % 32; // 32스텝 루프
+
+                // 1. 드럼 파트 리듬 (정박에 킥, 엇박에 스네어/하이햇 연출)
+                const drumStep = nextTickNum % 4;
+                if (drumStep === 0) {
+                    // 무겁고 단단한 베이스 킥 사운드
+                    playBeatSound(track.baseFreq, 'sawtooth', 0.14, 0.16);
+                } else if (drumStep === 2) {
+                    // 스네어 사운드 (노이즈 필터링 대용 고주파 사일런트 샌드)
+                    playBeatSound(track.baseFreq * 2.5, 'triangle', 0.08, 0.11);
+                } else {
+                    // 경쾌한 하이햇 메이킹
+                    playBeatSound(4000, 'sine', 0.02, 0.02);
+                }
+
+                // 2. 곡 고유 멜로디 라인 추출 및 합성 연주 (메인 보컬 신디사이저)
+                const noteName = melodyPattern[step % melodyPattern.length];
+                const noteFreq = NOTES[noteName] || 440;
+
+                // 곡 장르에 따른 신스 파형 및 사운드 조율
+                if (track.genre.includes("Rock") || track.genre.includes("Punk") || track.genre.includes("Rage")) {
+                    // 신나는 락 신스 기타 리프
+                    playBeatSound(noteFreq, 'sawtooth', 0.18, 0.12);
+                    // 서브 세컨드 리프 백그라운드 화음 연주
+                    if (step % 4 === 0) {
+                        playBeatSound(noteFreq * 0.75, 'sawtooth', 0.3, 0.05);
+                    }
+                } else if (track.genre.includes("Hyperpop") || track.genre.includes("Dark") || track.genre.includes("Techno")) {
+                    // 세련된 스퀘어 일렉트로닉 퓨처 베이스
+                    playBeatSound(noteFreq, 'triangle', 0.2, 0.14);
+                    if (step % 2 === 1) {
+                        playBeatSound(noteFreq * 1.5, 'sine', 0.06, 0.04);
+                    }
+                } else {
+                    // 상큼하고 투명한 플럭 피아노 & 사인파 댄스 팝
+                    playBeatSound(noteFreq, 'sine', 0.15, 0.15);
+                    // 살가운 패드 화음 사운드 추가
+                    if (step % 8 === 0) {
+                        playBeatSound(noteFreq / 2, 'triangle', 0.5, 0.08);
+                    }
+                }
+            }
+        }
+
+
+        // --- 7. 정밀 60FPS 프레임 게임 루프 ---
+        function gameLoop() {
+            if (!isPlaying) return;
+
+            const now = performance.now();
+            const elapsedSec = (now - musicStartTime) / 1000;
+            const track = TRACKS[currentTrackIdx];
+            const beatInterval = 60 / track.bpm;
+
+            // 오디오 연주 자동 합성 루프 호출
+            handleProceduralMusic(elapsedSec, beatInterval, track);
+
+            // 1. 새로운 노트 스폰 관리
+            while (scheduledNotes.length > 0 && scheduledNotes[0].spawnTime <= elapsedSec + noteSpeed) {
+                const note = scheduledNotes.shift();
+                
+                // DOM 노트 생성
+                const noteEl = document.createElement('div');
+                noteEl.className = 'absolute rounded-lg shadow-inner flex items-center justify-center';
+                noteEl.style.height = '16px';
+                noteEl.style.width = 'calc(25% - 6px)';
+                noteEl.style.left = `calc(${note.lane * 25}% + 3px)`;
+                
+                // 스타일 테마 네온 컬러 적용
+                noteEl.style.backgroundColor = track.noteColors[note.lane];
+                noteEl.style.boxShadow = `0 0 10px ${track.noteColors[note.lane]}, inset 0 2px 3px rgba(255,255,255,0.8)`;
+                noteEl.style.border = '1px solid rgba(255,255,255,0.4)';
+                
+                document.getElementById('notes-container').appendChild(noteEl);
+
+                note.element = noteEl;
+                activeNotes.push(note);
+            }
+
+            // 2. 노트의 낙하 애니메이션 및 판정 감지
+            const containerHeight = document.getElementById('screen-game').offsetHeight;
+            const judlineY = containerHeight - 124; // 판정선 정중앙 픽셀
+
+            for (let i = activeNotes.length - 1; i >= 0; i--) {
+                const note = activeNotes[i];
+                const timeDiff = note.spawnTime - elapsedSec;
+                const progress = 1 - (timeDiff / noteSpeed); // 1.0 일 때 정확히 판정선 위치
+
+                const yPos = progress * judlineY;
+
+                if (note.element) {
+                    note.element.style.transform = `translateY(${yPos}px)`;
+                }
+
+                // 노트가 판정선을 30px 이상 이탈하거나 지나치면 Miss 판정
+                if (yPos > judlineY + 30 || elapsedSec - note.spawnTime > 0.25) {
+                    handleJudgment('miss', note.lane);
+                    if (note.element) {
+                        note.element.remove();
+                    }
+                    activeNotes.splice(i, 1);
+                }
+            }
+
+            // 3. 실시간 체력 바닥 체크 (HP 0% 도달 시 즉시 게임 오버로 전환)
+            if (hp <= 0) {
+                triggerGameOver();
+                return;
+            }
+
+            // 4. 엔딩 시점 정산
+            if (scheduledNotes.length === 0 && activeNotes.length === 0) {
+                setTimeout(() => {
+                    showGameResults();
+                }, 1200);
+                isPlaying = false;
+                return;
+            }
+
+            mainTimer = requestAnimationFrame(gameLoop);
+        }
+
+
+        // --- 8. 정확도 판정 분석 (Accuracy Core) ---
+        function triggerLaneJudgment(lane) {
+            if (activeNotes.length === 0) return;
+
+            const now = performance.now();
+            const elapsedSec = (now - musicStartTime) / 1000;
+
+            // 가장 가까운 노트를 검색
+            let targetNote = null;
+            let targetIdx = -1;
+            let minDiff = Infinity;
+
+            for (let i = 0; i < activeNotes.length; i++) {
+                const note = activeNotes[i];
+                if (note.lane === lane) {
+                    const diff = Math.abs(elapsedSec - note.spawnTime);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        targetNote = note;
+                        targetIdx = i;
+                    }
+                }
+            }
+
+            // 판정 윈도우 너비 (최대 0.3초)
+            if (targetNote && minDiff <= 0.3) {
+                let result = 'miss';
+                
+                if (minDiff <= 0.08) {
+                    result = 'perfect'; // 80ms 이내
+                } else if (minDiff <= 0.16) {
+                    result = 'great';   // 160ms 이내
+                } else if (minDiff <= 0.26) {
+                    result = 'good';    // 260ms 이내
+                }
+
+                handleJudgment(result, lane);
+
+                if (result !== 'miss' && targetNote.element) {
+                    targetNote.element.style.transform += ' scale(1.35)';
+                    targetNote.element.style.opacity = '0';
+                    const targetEl = targetNote.element;
+                    setTimeout(() => { if (targetEl) targetEl.remove(); }, 100);
+                    activeNotes.splice(targetIdx, 1);
+                }
+            }
+        }
+
+        function handleJudgment(type, lane) {
+            const feed = document.getElementById('judgment-feedback');
+            
+            feed.classList.remove('judg-animate');
+            void feed.offsetWidth; 
+            feed.classList.add('judg-animate');
+
+            if (type === 'perfect') {
+                perfectCount++;
+                combo++;
+                score += (1000 + combo * 10);
+                hp = Math.min(100, hp + 3.5); // 판정 성공 시 소폭 회복
+                feed.innerText = "PERFECT";
+                feed.className = "judg-animate text-3xl font-orbitron font-extrabold italic uppercase text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]";
+                playHitSound('perfect');
+            } else if (type === 'great') {
+                greatCount++;
+                combo++;
+                score += (600 + combo * 5);
+                hp = Math.min(100, hp + 1.8);
+                feed.innerText = "GREAT";
+                feed.className = "judg-animate text-3xl font-orbitron font-extrabold italic uppercase text-blue-400 drop-shadow-[0_0_10px_rgba(96,165,250,0.5)]";
+                playHitSound('great');
+            } else if (type === 'good') {
+                goodCount++;
+                combo++;
+                score += (300 + combo * 2);
+                hp = Math.min(100, hp + 0.5);
+                feed.innerText = "GOOD";
+                feed.className = "judg-animate text-3xl font-orbitron font-extrabold italic uppercase text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]";
+                playHitSound('good');
+            } else if (type === 'miss') {
+                missCount++;
+                combo = 0;
+                hp = Math.max(0, hp - 11); // 폭사 방지를 위한 난이도 밸런싱 감점폭
+                feed.innerText = "MISS";
+                feed.className = "judg-animate text-3xl font-orbitron font-extrabold italic uppercase text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]";
+                playHitSound('miss');
+            }
+
+            // 점수 업데이트
+            document.getElementById('game-score').innerText = String(score).padStart(6, '0');
+
+            // 콤보 패널 관리
+            const comboBox = document.getElementById('combo-box');
+            const comboCount = document.getElementById('combo-count');
+            
+            if (combo > 0) {
+                comboBox.classList.remove('hidden');
+                comboCount.innerText = combo;
+                if (combo > maxCombo) maxCombo = combo;
+                
+                comboCount.classList.remove('combo-animate');
+                void comboCount.offsetWidth;
+                comboCount.classList.add('combo-animate');
+            } else {
+                comboBox.classList.add('hidden');
+            }
+
+            document.getElementById('hp-bar').style.width = `${hp}%`;
+        }
+
+
+        // --- 9. 게임오버 전조 및 트리거 시스템 ---
+        function triggerGameOver() {
+            isPlaying = false;
+            if (mainTimer) {
+                cancelAnimationFrame(mainTimer);
+            }
+            
+            // 신속하게 노트 DOM 청소
+            const notesContainer = document.getElementById('notes-container');
+            if (notesContainer) {
+                notesContainer.innerHTML = '';
+            }
+            activeNotes = [];
+            scheduledNotes = [];
+
+            // 실패음 합성 및 연주
+            playHitSound('miss');
+            setTimeout(() => {
+                playBeatSound(110, 'sawtooth', 0.4, 0.4);
+            }, 150);
+
+            // 게임오버 곡 정보 세팅
+            const track = TRACKS[currentTrackIdx];
+            document.getElementById('gameover-track-info').innerText = `${track.title} - ${track.artist}`;
+
+            // 화면 노출 변경
+            screens.game.classList.add('hidden');
+            screens.gameover.classList.remove('hidden');
+            screens.result.classList.add('hidden');
+            screens.main.classList.add('hidden');
+            
+            gameState = "gameover";
+        }
+
+
+        // --- 10. 입력 핸들러 ---
+        function handlePadPress(lane) {
+            if (gameState !== 'playing') return;
+            document.getElementById(`lane-${lane}`).classList.add('lane-active');
+            document.getElementById(`hit-beam-${lane}`).classList.add('active');
+            triggerLaneJudgment(lane);
+        }
+
+        function handlePadRelease(lane) {
+            document.getElementById(`lane-${lane}`).classList.remove('lane-active');
+            document.getElementById(`hit-beam-${lane}`).classList.remove('active');
+        }
+
+        // PC 키보드 리스너 연동
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return; 
+            const key = e.key;
+            if (LANE_KEYS[key] !== undefined) {
+                handlePadPress(LANE_KEYS[key]);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key;
+            if (LANE_KEYS[key] !== undefined) {
+                handlePadRelease(LANE_KEYS[key]);
+            }
+        });
+
+
+        // --- 11. 결과 발표 ---
+        function showGameResults() {
+            gameState = "result";
+            screens.game.classList.add('hidden');
+            screens.result.classList.remove('hidden');
+
+            const track = TRACKS[currentTrackIdx];
+            document.getElementById('result-track-title').innerText = track.title;
+            document.getElementById('result-score').innerText = score.toLocaleString();
+            document.getElementById('result-max-combo').innerText = maxCombo;
+
+            document.getElementById('cnt-perfect').innerText = perfectCount;
+            document.getElementById('cnt-great').innerText = greatCount;
+            document.getElementById('cnt-good').innerText = goodCount;
+            document.getElementById('cnt-miss').innerText = missCount;
+
+            const total = totalNotesCount;
+            const perfectRate = perfectCount / total;
+            let rank = "C";
+
+            if (perfectRate >= 0.95 && missCount === 0) rank = "S+";
+            else if (perfectRate >= 0.90 && missCount <= 2) rank = "S";
+            else if (perfectRate >= 0.80 && missCount <= 5) rank = "A";
+            else if (perfectRate >= 0.65 && missCount <= 10) rank = "B";
+
+            const rankEl = document.getElementById('result-rank');
+            rankEl.innerText = rank;
+
+            if (rank.startsWith("S")) {
+                rankEl.className = "text-4xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-pink-500 drop-shadow";
+            } else if (rank === "A") {
+                rankEl.className = "text-4xl font-orbitron font-black text-emerald-400 drop-shadow";
+            } else {
+                rankEl.className = "text-4xl font-orbitron font-black text-blue-400 drop-shadow";
+            }
+        }
+    </script>
+</body>
+</html>
